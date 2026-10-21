@@ -1,0 +1,48 @@
+{
+  "base_url": {
+    "description": "Sub2API 地址",
+    "type": "string",
+    "default": "http://127.0.0.1:9999",
+    "hint": "不要加 /v1，例如 http://127.0.0.1:9999"
+  },
+  "admin_api_key": {
+    "description": "Sub2API 管理员 API Key",
+    "type": "string",
+    "default": "",
+    "secret": true,
+    "hint": "推荐使用。插件通过 x-api-key 调用 /api/v1/admin/*"
+  },
+  "admin_jwt": {
+    "description": "管理员 JWT（备用）",
+    "type": "string",
+    "default": "",
+    "secret": true,
+    "hint": "仅当未配置 admin_api_key 时使用"
+  },
+  "timeout": {
+    "description": "请求超时（秒）",
+    "type": "int",
+    "default": 12
+  },
+  "page_size": {
+    "description": "每次拉取账号数",
+    "type": "int",
+    "default": 50
+  },
+  "max_display_accounts": {
+    "description": "面板最多显示账号数量",
+    "type": "int",
+    "default": 8
+  },
+  "verify_ssl": {
+    "description": "校验 HTTPS 证书",
+    "type": "bool",
+    "default": true
+  },
+  "bypass_system_proxy": {
+    "description": "访问 Sub2API 时绕过系统代理",
+    "type": "bool",
+    "default": true,
+    "hint": "只影响 AstrBot -> Sub2API 的查询，不影响 Sub2API 自己访问 OpenAI"
+  }
+}
