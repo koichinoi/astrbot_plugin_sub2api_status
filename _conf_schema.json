@@ -34,6 +34,12 @@
     "type": "int",
     "default": 8
   },
+  "show_base_url": {
+    "description": "在图片中显示 Sub2API 地址",
+    "type": "bool",
+    "default": false,
+    "hint": "默认隐藏，避免面板发到群里时暴露内网地址"
+  },
   "verify_ssl": {
     "description": "校验 HTTPS 证书",
     "type": "bool",
