@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from astrbot.api import AstrBotConfig, logger
@@ -195,6 +196,7 @@ body {
 .right-col-grid {
   display: grid;
   grid-template-rows: auto auto;
+  align-content: start;
   gap: 18px;
 }
 .kv-list {
@@ -217,10 +219,12 @@ body {
   font-size: 22px;
   font-weight: 700;
   color: #ffffff;
+  word-break: break-word;
 }
 .bottom {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: start;
   gap: 18px;
 }
 .tag-list {
@@ -235,6 +239,77 @@ body {
   border: 1px solid rgba(255,255,255,0.06);
   font-size: 13px;
   color: #dbeafe;
+}
+.state {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.lv-ok { color: #86efac; background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.35); }
+.lv-warn { color: #fcd34d; background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.35); }
+.lv-bad { color: #fca5a5; background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.35); }
+.lv-muted { color: #cbd5e1; background: rgba(148,163,184,0.14); border-color: rgba(148,163,184,0.30); }
+.bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.fill-ok { background: linear-gradient(90deg, #16a34a, #4ade80); }
+.fill-warn { background: linear-gradient(90deg, #d97706, #fbbf24); }
+.fill-bad { background: linear-gradient(90deg, #dc2626, #f87171); }
+.pct-ok { color: #86efac; }
+.pct-warn { color: #fcd34d; }
+.pct-bad { color: #fca5a5; }
+.mini-usage {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 2px;
+}
+.mini-text {
+  min-width: 130px;
+  text-align: right;
+  font-size: 12px;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+.attention-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.attention-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.attention-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.attention-reasons {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #cbd5e1;
+  word-break: break-word;
 }
 .footer {
   margin-top: 18px;
@@ -265,7 +340,9 @@ body {
       <div class="top-meta">
         <div class="small-muted">面板生成时间</div>
         <div class="time">{{ generated_at }}</div>
+        {% if base_url %}
         <div class="small-muted">数据来源：{{ base_url }}</div>
+        {% endif %}
       </div>
     </div>
 
@@ -293,7 +370,7 @@ body {
             <div class="status-dot {{ acc.dot_class }}"></div>
             <div class="account-main">
               <div class="account-name">#{{ acc.id }} {{ acc.name }}</div>
-              <div class="account-meta">{{ acc.platform }} / {{ acc.type }} · 状态：{{ acc.status_text }} · 分组：{{ acc.groups }}</div>
+              <div class="account-meta">{{ acc.platform }} / {{ acc.type }} · 分组：{{ acc.groups }}</div>
               <div class="account-badges">
                 <span class="pill">套餐：{{ acc.plan }}</span>
                 <span class="pill">到期：{{ acc.expiry }}</span>
@@ -302,9 +379,15 @@ body {
                 <span class="pill">{{ acc.extra_badge }}</span>
                 {% endif %}
               </div>
+              {% if acc.usage %}
+              <div class="mini-usage">
+                <div class="bar"><span class="fill-{{ acc.usage.level }}" style="width: {{ acc.usage.width }}%"></span></div>
+                <span class="mini-text">{{ acc.usage.name }} <b class="pct-{{ acc.usage.level }}">{{ acc.usage.percent }}%</b></span>
+              </div>
+              {% endif %}
             </div>
             <div class="account-badges">
-              <span class="pill">{{ acc.status_icon }}</span>
+              <span class="state lv-{{ acc.status_level }}">{{ acc.status_label }}</span>
             </div>
           </div>
           {% endfor %}
@@ -350,6 +433,28 @@ body {
     <div class="bottom">
       <div class="card">
         <div class="section-title">
+          <h2>需要关注</h2>
+          <div class="hint">{{ attention_hint }}</div>
+        </div>
+        {% if attention %}
+        <div class="attention-list">
+          {% for item in attention %}
+          <div class="attention-item">
+            <span class="state lv-{{ item.level }}">{{ item.label }}</span>
+            <div>
+              <div class="attention-name">#{{ item.id }} {{ item.name }}</div>
+              <div class="attention-reasons">{{ item.reasons|join(" · ") }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty">所有账号状态正常，暂无需要处理的账号</div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="section-title">
           <h2>可用模型预览</h2>
           <div class="hint">从前几项账号里汇总</div>
         </div>
@@ -362,18 +467,6 @@ body {
         {% else %}
         <div class="empty">暂无模型数据</div>
         {% endif %}
-      </div>
-
-      <div class="card">
-        <div class="section-title">
-          <h2>说明</h2>
-          <div class="hint">安全与展示</div>
-        </div>
-        <div class="tag-list">
-          {% for note in notes %}
-          <span class="tag">{{ note }}</span>
-          {% endfor %}
-        </div>
       </div>
     </div>
 
@@ -442,14 +535,6 @@ body {
   color: #c9d7f6;
   font-size: 15px;
 }
-.status-chip {
-  padding: 12px 16px;
-  border-radius: 18px;
-  font-weight: 700;
-  font-size: 16px;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,.08);
-}
 .grid {
   display: grid;
   grid-template-columns: 1.05fr 1fr;
@@ -511,6 +596,9 @@ body {
 .models {
   margin-top: 18px;
 }
+.grid > .card {
+  align-self: start;
+}
 .tags {
   display: flex;
   flex-wrap: wrap;
@@ -523,6 +611,72 @@ body {
   border: 1px solid rgba(255,255,255,0.08);
   color: #dbeafe;
   font-size: 13px;
+}
+.state {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.lv-ok { color: #86efac; background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.35); }
+.lv-warn { color: #fcd34d; background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.35); }
+.lv-bad { color: #fca5a5; background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.35); }
+.lv-muted { color: #cbd5e1; background: rgba(148,163,184,0.14); border-color: rgba(148,163,184,0.30); }
+.bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.fill-ok { background: linear-gradient(90deg, #16a34a, #4ade80); }
+.fill-warn { background: linear-gradient(90deg, #d97706, #fbbf24); }
+.fill-bad { background: linear-gradient(90deg, #dc2626, #f87171); }
+.pct-ok { color: #86efac; }
+.pct-warn { color: #fcd34d; }
+.pct-bad { color: #fca5a5; }
+.state-lg {
+  padding: 10px 18px;
+  font-size: 18px;
+}
+.window-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.window {
+  background: rgba(255,255,255,0.045);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+.window-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.w-name {
+  color: #dbe4ff;
+  font-size: 15px;
+  font-weight: 600;
+}
+.w-pct {
+  font-size: 22px;
+  font-weight: 800;
+}
+.w-reset {
+  margin-top: 8px;
+  color: #b9caef;
+  font-size: 12px;
 }
 .footer {
   margin-top: 18px;
@@ -541,7 +695,7 @@ body {
         <div class="title">#{{ account.id }} {{ account.name }}</div>
         <div class="sub">{{ account.platform }} / {{ account.type }} · 分组：{{ account.groups }}</div>
       </div>
-      <div class="status-chip">{{ account.status_icon }} {{ account.status_text }}</div>
+      <div class="state state-lg lv-{{ account.status_level }}">{{ account.status_label }}</div>
     </div>
 
     <div class="grid">
@@ -572,6 +726,22 @@ body {
 
       <div class="card">
         <h3 class="section-title">额度 / 用量</h3>
+        {% if windows %}
+        <div class="window-list">
+          {% for w in windows %}
+          <div class="window">
+            <div class="window-head">
+              <span class="w-name">{{ w.name }}</span>
+              <span class="w-pct pct-{{ w.level }}">{{ w.percent }}%</span>
+            </div>
+            <div class="bar"><span class="fill-{{ w.level }}" style="width: {{ w.width }}%"></span></div>
+            {% if w.reset %}
+            <div class="w-reset">{{ w.reset }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
         <div class="usage-list">
           {% for item in usage %}
           <div class="usage-item">
@@ -583,7 +753,7 @@ body {
       </div>
     </div>
 
-    <div class="footer">面板生成时间：{{ generated_at }} · 数据来源：{{ base_url }}</div>
+    <div class="footer">面板生成时间：{{ generated_at }}{% if base_url %} · 数据来源：{{ base_url }}{% endif %}</div>
   </div>
 </div>
 </body>
@@ -605,6 +775,9 @@ class Sub2APIStatusPlugin(Star):
     def _base_url(self) -> str:
         return str(self.config.get("base_url", "http://127.0.0.1:9999")).strip().rstrip("/")
 
+    def _display_base_url(self) -> str:
+        return self._base_url() if bool(self.config.get("show_base_url", False)) else ""
+
     def _timeout(self) -> int:
         try:
             return max(3, min(int(self.config.get("timeout", 12)), 60))
@@ -619,9 +792,15 @@ class Sub2APIStatusPlugin(Star):
 
     def _max_display(self) -> int:
         try:
-            return max(1, min(int(self.config.get("max_display_accounts", 12)), 50))
+            return max(1, min(int(self.config.get("max_display_accounts", 8)), 50))
         except Exception:
-            return 12
+            return 8
+
+    @staticmethod
+    def _render_options() -> dict[str, Any]:
+        # AstrBot 会把这里的选项合并进默认的 {"type": "jpeg", "quality": 40}，
+        # 若改用 png，残留的 quality 会让 Playwright 截图直接报错，所以保持 jpeg 并提高画质。
+        return {"type": "jpeg", "quality": 92, "full_page": True, "scale": "device", "animations": "disabled"}
 
     def _auth_headers(self) -> dict[str, str]:
         admin_key = str(self.config.get("admin_api_key", "") or "").strip()
@@ -753,11 +932,13 @@ class Sub2APIStatusPlugin(Star):
             or self._pick(extra, "plan_type", "subscription_tier", "subscription_type", "tier", default=None)
         return str(value) if value not in (None, "") else "-"
 
-    def _expiry_text(self, account: dict[str, Any]) -> str:
+    def _expiry_raw(self, account: dict[str, Any]) -> Any:
         extra = self._extra(account)
-        value = self._pick(account, "expires_at", "expired_at", "subscription_expires_at", "subscription_expire_at", default=None) \
+        return self._pick(account, "expires_at", "expired_at", "subscription_expires_at", "subscription_expire_at", default=None) \
             or self._pick(extra, "expires_at", "expired_at", "subscription_expires_at", "subscription_expire_at", default=None)
-        return self._fmt_datetime(value)
+
+    def _expiry_text(self, account: dict[str, Any]) -> str:
+        return self._fmt_datetime(self._expiry_raw(account))
 
     def _status_icon(self, status: str) -> str:
         s = status.lower().strip()
@@ -769,15 +950,109 @@ class Sub2APIStatusPlugin(Star):
             return "❌"
         return "⚪"
 
-    def _status_dot_class(self, status: str) -> str:
-        s = status.lower().strip()
-        if s in {"active", "normal", "ok", "healthy", "enabled"}:
-            return "status-active"
-        if s in {"error", "failed", "invalid", "expired"}:
-            return "status-error"
-        if s in {"inactive", "disabled", "stopped"}:
-            return "status-paused"
-        return "status-other"
+    @staticmethod
+    def _parse_dt(value: Any) -> datetime | None:
+        if value in (None, "", 0):
+            return None
+        try:
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                ts = float(value)
+                if ts > 10_000_000_000:
+                    ts /= 1000
+                return datetime.fromtimestamp(ts, timezone.utc)
+            text = str(value).strip().replace(" ", "T", 1).replace("Z", "+00:00")
+            # Go 的 RFC3339Nano 可能带 9 位小数，fromisoformat 最多接受 6 位
+            text = re.sub(r"(\.\d{6})\d+", r"\1", text)
+            dt = datetime.fromisoformat(text)
+        except Exception:
+            return None
+        return dt if dt.tzinfo else dt.astimezone()
+
+    def _in_future(self, account: dict[str, Any], *keys: str) -> bool:
+        value = self._pick(account, *keys, default=None) or self._pick(self._extra(account), *keys, default=None)
+        dt = self._parse_dt(value)
+        return dt is not None and dt > datetime.now(timezone.utc)
+
+    def _status_badge(self, account: dict[str, Any]) -> tuple[str, str]:
+        """返回 (中文状态, 等级)，等级用于 CSS：ok / warn / bad / muted。"""
+        status = str(self._pick(account, "status", default="")).lower().strip()
+        if status in {"error", "failed", "invalid", "expired", "banned"}:
+            return "异常", "bad"
+        if status in {"inactive", "disabled", "stopped", "paused"}:
+            return "已停用", "muted"
+        if self._in_future(account, "rate_limit_reset_at", "rate_limited_until"):
+            return "限流中", "warn"
+        if self._in_future(account, "overload_until"):
+            return "过载", "warn"
+        if self._in_future(account, "temp_unschedulable_until"):
+            return "暂停调度", "warn"
+        if status in {"active", "normal", "ok", "healthy", "enabled"}:
+            return "正常", "ok"
+        return (status or "未知"), "muted"
+
+    _PERCENT_KEYS = ("utilization", "used_percent", "usage_percent", "percent_used")
+    _RESET_KEYS = ("resets_at", "reset_at", "reset_time")
+
+    @staticmethod
+    def _usage_level(percent: float) -> str:
+        if percent >= 85:
+            return "bad"
+        if percent >= 60:
+            return "warn"
+        return "ok"
+
+    def _reset_text(self, node: dict[str, Any]) -> str:
+        now = datetime.now(timezone.utc)
+        dt = self._parse_dt(self._pick(node, *self._RESET_KEYS, default=None))
+        if dt is None:
+            seconds = self._pick(node, "reset_after_seconds", default=None)
+            try:
+                dt = datetime.fromtimestamp(now.timestamp() + float(seconds), timezone.utc)
+            except Exception:
+                return ""
+        left = int((dt - now).total_seconds())
+        when = dt.astimezone().strftime("%m-%d %H:%M")
+        if left <= 0:
+            return f"重置：{when}"
+        if left >= 86400:
+            rel = f"{left // 86400}天{left % 86400 // 3600}小时后"
+        elif left >= 3600:
+            rel = f"{left // 3600}小时{left % 3600 // 60}分后"
+        else:
+            rel = f"{max(1, left // 60)}分钟后"
+        return f"重置：{when}（{rel}）"
+
+    def _usage_windows(self, payload: Any, prefix: str = "", depth: int = 0, out: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+        """从用量数据里找出所有带百分比的额度窗口（如 5 小时 / 7 天窗口）。"""
+        if out is None:
+            out = []
+            payload = self._unwrap(payload)
+        if depth > 3:
+            return out
+        if isinstance(payload, list):
+            for idx, child in enumerate(payload[:8]):
+                self._usage_windows(child, f"{prefix}[{idx}]", depth + 1, out)
+            return out
+        if not isinstance(payload, dict):
+            return out
+        pct = next((payload[k] for k in self._PERCENT_KEYS
+                    if isinstance(payload.get(k), (int, float)) and not isinstance(payload.get(k), bool)), None)
+        if pct is not None:
+            percent = float(pct)
+            out.append({
+                "path": prefix,
+                "name": self._friendly_key(prefix) if prefix else "额度",
+                "percent": self._fmt_number(percent, 1),
+                "value": percent,
+                "width": max(0.0, min(percent, 100.0)),
+                "level": self._usage_level(percent),
+                "reset": self._reset_text(payload),
+            })
+            return out
+        for key, child in payload.items():
+            if isinstance(child, (dict, list)):
+                self._usage_windows(child, f"{prefix}.{key}" if prefix else str(key), depth + 1, out)
+        return out
 
     def _display_name(self, account: dict[str, Any]) -> str:
         return str(self._pick(account, "name", "display_name", "username", "email", default=f"账号#{account.get('id', '?')}"))
@@ -833,7 +1108,7 @@ class Sub2APIStatusPlugin(Star):
         return items[0]
 
     _SENSITIVE_WORDS = ("token", "secret", "password", "credential", "cookie", "authorization", "api_key", "apikey", "access_key", "refresh_token")
-    _INTERESTING_WORDS = ("plan", "tier", "usage", "used", "limit", "remain", "quota", "balance", "credit", "reset", "request", "token_count", "input_tokens", "output_tokens", "total_tokens", "cost", "window", "expires", "fetched", "allowed", "reached")
+    _INTERESTING_WORDS = ("plan", "tier", "usage", "used", "limit", "remain", "quota", "balance", "credit", "reset", "request", "token_count", "input_tokens", "output_tokens", "total_tokens", "cost", "window", "expires", "fetched", "allowed", "reached", "utilization", "percent", "account", "user", "rpm", "tpm", "rate", "duration", "response_time", "uptime")
 
     def _flatten_interesting(self, value: Any, prefix: str = "", depth: int = 0, out: list[tuple[str, Any]] | None = None) -> list[tuple[str, Any]]:
         if out is None:
@@ -857,30 +1132,77 @@ class Sub2APIStatusPlugin(Star):
                 self._flatten_interesting(child, f"{prefix}[{idx}]", depth + 1, out)
         return out
 
-    def _friendly_key(self, key: str) -> str:
-        replacements = {
-            "used_percent": "已使用%",
-            "reset_after_seconds": "距重置(秒)",
-            "reset_at": "重置时间",
-            "balance": "余额",
-            "plan_type": "套餐",
-            "subscription_tier": "订阅等级",
-            "requests": "请求数",
-            "request_count": "请求数",
-            "input_tokens": "输入Tokens",
-            "output_tokens": "输出Tokens",
-            "total_tokens": "总Tokens",
-            "cost": "费用",
-            "actual_cost": "实际费用",
-            "allowed": "允许",
-            "limit_reached": "触发限额",
-            "fetched_at": "获取时间",
-            "expires_at": "到期时间",
-        }
-        leaf = key.split(".")[-1]
-        return replacements.get(leaf, key)
+    _KEY_LABELS = {
+        "used_percent": "已使用%",
+        "utilization": "已使用%",
+        "reset_after_seconds": "距重置(秒)",
+        "reset_at": "重置时间",
+        "resets_at": "重置时间",
+        "balance": "余额",
+        "plan_type": "套餐",
+        "subscription_tier": "订阅等级",
+        "requests": "请求数",
+        "request_count": "请求数",
+        "tokens": "Tokens",
+        "input_tokens": "输入Tokens",
+        "output_tokens": "输出Tokens",
+        "total_tokens": "总Tokens",
+        "cost": "费用",
+        "actual_cost": "实际费用",
+        "standard_cost": "标准费用",
+        "user_cost": "用户费用",
+        "allowed": "允许",
+        "limit_reached": "触发限额",
+        "fetched_at": "获取时间",
+        "expires_at": "到期时间",
+        "five_hour": "5小时窗口",
+        "seven_day": "7天窗口",
+        "seven_day_opus": "7天Opus",
+        "seven_day_sonnet": "7天Sonnet",
+        "total_accounts": "账号总数",
+        "normal_accounts": "正常账号",
+        "active_accounts": "活跃账号",
+        "error_accounts": "异常账号",
+        "ratelimit_accounts": "限流账号",
+        "overload_accounts": "过载账号",
+        "total_users": "用户总数",
+        "active_users": "活跃用户",
+        "today_new_users": "今日新用户",
+        "total_api_keys": "API Key 总数",
+        "active_api_keys": "活跃 API Key",
+        "total_requests": "累计请求",
+        "today_requests": "今日请求",
+        "today_tokens": "今日Tokens",
+        "today_input_tokens": "今日输入Tokens",
+        "today_output_tokens": "今日输出Tokens",
+        "total_cost": "累计费用",
+        "total_actual_cost": "累计实际费用",
+        "today_cost": "今日费用",
+        "today_actual_cost": "今日实际费用",
+        "active_requests": "进行中请求",
+        "requests_per_minute": "每分钟请求",
+        "average_response_time": "平均响应(ms)",
+        "average_duration_ms": "平均耗时(ms)",
+        "error_rate": "错误率",
+        "rpm": "RPM",
+        "tpm": "TPM",
+        "uptime": "运行时长(秒)",
+    }
 
-    def _pairs_for_display(self, payload: Any, limit: int = 12) -> list[dict[str, str]]:
+    def _friendly_key(self, key: str) -> str:
+        parts = [p for p in key.replace("[", ".[").split(".") if p]
+        return " · ".join(self._KEY_LABELS.get(p, p) for p in parts)
+
+    def _skip_path(self, path: str, skip_paths: list[str]) -> bool:
+        for p in skip_paths:
+            if p == "":
+                if path in self._PERCENT_KEYS + self._RESET_KEYS + ("reset_after_seconds",):
+                    return True
+            elif path == p or path.startswith(p + ".") or path.startswith(p + "["):
+                return True
+        return False
+
+    def _pairs_for_display(self, payload: Any, limit: int = 12, skip_paths: list[str] | None = None) -> list[dict[str, str]]:
         payload = self._unwrap(payload)
         if payload is None:
             return []
@@ -892,12 +1214,16 @@ class Sub2APIStatusPlugin(Star):
                     continue
                 if isinstance(value, (str, int, float, bool)) and len(pairs) < limit:
                     pairs.append((str(key), value))
+        if skip_paths:
+            pairs = [(k, v) for k, v in pairs if not self._skip_path(k, skip_paths)]
         result = []
         for key, value in pairs[:limit]:
             if isinstance(value, bool):
                 value_text = "是" if value else "否"
             elif isinstance(value, float):
                 value_text = self._fmt_number(value, 4)
+            elif isinstance(value, str) and len(value) >= 19 and value[4] == "-" and value[10] == "T":
+                value_text = self._fmt_datetime(value)
             else:
                 value_text = str(value)
             if len(value_text) > 100:
@@ -940,6 +1266,59 @@ class Sub2APIStatusPlugin(Star):
         except Exception:
             return []
 
+    async def _passive_usage_windows(self, account_id: Any, sem: asyncio.Semaphore) -> list[dict[str, Any]]:
+        if account_id is None:
+            return []
+        async with sem:
+            try:
+                payload = await self._request("GET", f"/api/v1/admin/accounts/{account_id}/usage", params={"source": "passive"})
+            except Exception:
+                return []
+        return self._usage_windows(payload)
+
+    def _attention_items(self, accounts: list[dict[str, Any]], top_usage: dict[Any, dict[str, Any]]) -> list[dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        rank = {"bad": 0, "warn": 1, "muted": 2}
+        items = []
+        for acc in accounts:
+            label, level = self._status_badge(acc)
+            reasons: list[str] = []
+            if level in {"bad", "warn"}:
+                reasons.append(label)
+                err = str(self._pick(acc, "error_message", "last_error", default="") or "").strip()
+                if err:
+                    reasons.append(err[:60] + ("…" if len(err) > 60 else ""))
+            expiry = self._parse_dt(self._expiry_raw(acc))
+            if expiry is not None:
+                days = (expiry - now).total_seconds() / 86400
+                if days < 0:
+                    reasons.append("订阅已到期")
+                    level = "bad"
+                elif days <= 7:
+                    reasons.append(f"{max(1, int(days + 0.999))} 天内到期")
+                    if level not in {"bad"}:
+                        level = "warn"
+            usage = top_usage.get(acc.get("id"))
+            if usage and usage["value"] >= 85:
+                reasons.append(f"{usage['name']} 已用 {usage['percent']}%")
+                if level != "bad":
+                    level = "warn"
+            if not reasons:
+                continue
+            if level == "bad" and label == "正常":
+                label = "到期"
+            elif level == "warn" and label == "正常":
+                label = "额度紧张" if usage and usage["value"] >= 85 else "即将到期"
+            items.append({
+                "id": acc.get("id", "?"),
+                "name": self._display_name(acc),
+                "label": label,
+                "level": level,
+                "reasons": reasons,
+            })
+        items.sort(key=lambda x: rank.get(x["level"], 3))
+        return items
+
     async def _render_panel_image(self, keyword: str = "") -> str:
         accounts, total = await self._list_accounts(keyword)
         stats_task = self._request("GET", "/api/v1/admin/dashboard/stats")
@@ -948,31 +1327,27 @@ class Sub2APIStatusPlugin(Star):
 
         display_accounts = accounts[:min(len(accounts), self._max_display())]
 
-        active = 0
-        errors = 0
-        paused = 0
-        for acc in accounts:
-            status = str(self._pick(acc, "status", default="")).lower()
-            if status in {"active", "normal", "ok", "healthy", "enabled"}:
-                active += 1
-            elif status in {"error", "failed", "invalid", "expired"}:
-                errors += 1
-            elif status in {"inactive", "disabled", "stopped"}:
-                paused += 1
-
+        sem = asyncio.Semaphore(5)
+        model_lists, usage_lists = await asyncio.gather(
+            asyncio.gather(*(self._models_for_account(acc.get("id")) for acc in display_accounts[:4])),
+            asyncio.gather(*(self._passive_usage_windows(acc.get("id"), sem) for acc in display_accounts)),
+        )
         model_tags: list[str] = []
-        for acc in display_accounts[:4]:
-            mid = acc.get("id")
-            models = await self._models_for_account(mid)
+        for models in model_lists:
             for m in models[:6]:
                 if m not in model_tags:
                     model_tags.append(m)
             if len(model_tags) >= 18:
                 break
 
+        top_usage: dict[Any, dict[str, Any]] = {}
+        for acc, windows in zip(display_accounts, usage_lists):
+            if windows:
+                top_usage[acc.get("id")] = max(windows, key=lambda w: w["value"])
+
         acc_rows = []
         for acc in display_accounts:
-            status = str(self._pick(acc, "status", default="unknown"))
+            label, level = self._status_badge(acc)
             sched = self._pick(acc, "schedulable", "is_schedulable", default=None)
             extra_badge = ""
             if sched is False:
@@ -984,55 +1359,66 @@ class Sub2APIStatusPlugin(Star):
                 "name": self._display_name(acc),
                 "platform": str(self._pick(acc, "platform", default="-")),
                 "type": str(self._pick(acc, "type", "account_type", default="-")),
-                "status_text": status,
-                "status_icon": self._status_icon(status),
-                "dot_class": self._status_dot_class(status),
+                "status_label": label,
+                "status_level": level,
+                "dot_class": {"ok": "status-active", "bad": "status-error", "warn": "status-paused"}.get(level, "status-other"),
                 "groups": self._groups_text(acc),
                 "plan": self._plan_text(acc),
                 "expiry": self._expiry_text(acc),
                 "concurrency": str(self._pick(acc, "concurrency", "max_concurrency", default="-")),
                 "extra_badge": extra_badge,
+                "usage": top_usage.get(acc.get("id")),
             })
+
+        # 账号数量优先取全局统计（覆盖全部账号）；带关键词筛选或统计不可用时，退回统计本页数据
+        stats_dict = self._unwrap(stats_payload) if isinstance(stats_payload, dict) else {}
+        stats_dict = stats_dict if isinstance(stats_dict, dict) else {}
+        if not keyword and isinstance(stats_dict.get("normal_accounts"), (int, float)):
+            normal = int(stats_dict.get("normal_accounts") or 0)
+            errors = int(stats_dict.get("error_accounts") or 0)
+            limited = int(stats_dict.get("ratelimit_accounts") or 0) + int(stats_dict.get("overload_accounts") or 0)
+            normal_sub = f"异常 {errors} · 限流/过载 {limited} · 全局统计"
+        else:
+            levels = [self._status_badge(acc)[1] for acc in accounts]
+            normal = levels.count("ok")
+            normal_sub = f"异常 {levels.count('bad')} · 限流/停用 {levels.count('warn') + levels.count('muted')} · 本页 {len(accounts)} 个"
 
         metrics = [
             {"label": "账号总数", "value": str(total if total is not None else len(accounts)), "sub": f"筛选条件：{keyword or '全部账号'}"},
-            {"label": "正常账号", "value": str(active), "sub": f"异常 {errors} · 暂停 {paused}"},
+            {"label": "正常账号", "value": str(normal), "sub": normal_sub},
             {"label": "展示账号", "value": str(len(display_accounts)), "sub": f"最多显示 {self._max_display()} 个"},
             {"label": "模型样本", "value": str(len(model_tags)), "sub": "从前几项账号汇总"},
         ]
 
-        realtime = []
         if isinstance(realtime_payload, Exception):
             realtime = [{"key": "实时状态", "value": "获取失败"}]
         else:
             realtime = self._pairs_for_display(realtime_payload, 6) or [{"key": "实时状态", "value": "暂无数据"}]
 
-        stats = []
         if isinstance(stats_payload, Exception):
             stats = [{"key": "全局统计", "value": "获取失败"}]
         else:
-            stats = self._pairs_for_display(stats_payload, 6) or [{"key": "全局统计", "value": "暂无数据"}]
+            stats = self._pairs_for_display(stats_payload, 8) or [{"key": "全局统计", "value": "暂无数据"}]
+
+        attention = self._attention_items(accounts, top_usage)
+        attention_hint = f"{len(attention)} 个账号" if attention else "异常 / 限流 / 到期 / 额度"
+        if len(attention) > 6:
+            attention_hint = f"共 {len(attention)} 个，显示前 6 个"
 
         data = {
             "panel_title": "Sub2API 账号总览",
             "subtitle": "用于快速查看当前账号、状态、模型和整体运行情况",
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "base_url": self._base_url(),
+            "base_url": self._display_base_url(),
             "metrics": metrics,
             "accounts": acc_rows,
             "realtime": realtime,
             "stats": stats,
             "model_tags": model_tags,
-            "notes": [
-                "仅管理员可用",
-                "默认不会显示敏感凭证",
-                "账号邮箱建议在配置中保持脱敏",
-                "使用 HTML + Jinja2 渲染图片",
-                "Sub2API 在本机/局域网时建议绕过系统代理",
-            ],
+            "attention": attention[:6],
+            "attention_hint": attention_hint,
         }
-        options = {"type": "png", "full_page": True, "scale": "device", "animations": "disabled"}
-        return await self.html_render(PANEL_TEMPLATE, data, options=options)
+        return await self.html_render(PANEL_TEMPLATE, data, options=self._render_options())
 
     async def _render_detail_image(self, selector: str) -> str:
         account = await self._find_account(selector)
@@ -1051,13 +1437,15 @@ class Sub2APIStatusPlugin(Star):
         models_task = self._models_for_account(account_id)
         usage_payload, today_payload, models = await asyncio.gather(usage_task, today_task, models_task, return_exceptions=True)
 
+        windows: list[dict[str, Any]] = []
         usage_rows = []
         if not isinstance(usage_payload, Exception):
-            usage_rows.extend(self._pairs_for_display(usage_payload, 8))
+            windows = self._usage_windows(usage_payload)
+            usage_rows.extend(self._pairs_for_display(usage_payload, 8, skip_paths=[w["path"] for w in windows]))
         if not isinstance(today_payload, Exception):
             today_pairs = self._pairs_for_display(today_payload, 6)
             usage_rows.extend(today_pairs)
-        if not usage_rows:
+        if not usage_rows and not windows:
             usage_rows = [{"key": "用量信息", "value": "暂无数据"}]
 
         base_info = [
@@ -1078,16 +1466,17 @@ class Sub2APIStatusPlugin(Star):
                 "platform": str(self._pick(account, "platform", default="-")),
                 "type": str(self._pick(account, "type", "account_type", default="-")),
                 "groups": self._groups_text(account),
-                "status_text": str(self._pick(account, "status", default="unknown")),
-                "status_icon": self._status_icon(str(self._pick(account, "status", default="unknown"))),
+                "status_label": self._status_badge(account)[0],
+                "status_level": self._status_badge(account)[1],
             },
             "base_info": base_info,
+            "windows": windows[:6],
             "usage": usage_rows[:14],
             "models": models[:18] if isinstance(models, list) else [],
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "base_url": self._base_url(),
+            "base_url": self._display_base_url(),
         }
-        options = {"type": "png", "full_page": True, "scale": "device", "animations": "disabled"}
+        options = self._render_options()
         return await self.html_render(DETAIL_TEMPLATE, data, options=options)
 
     # ---- commands ----
