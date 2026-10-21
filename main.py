@@ -195,6 +195,7 @@ body {
 .right-col-grid {
   display: grid;
   grid-template-rows: auto auto;
+  align-content: start;
   gap: 18px;
 }
 .kv-list {
@@ -217,6 +218,7 @@ body {
   font-size: 22px;
   font-weight: 700;
   color: #ffffff;
+  word-break: break-word;
 }
 .bottom {
   display: grid;
@@ -511,6 +513,9 @@ body {
 .models {
   margin-top: 18px;
 }
+.grid > .card {
+  align-self: start;
+}
 .tags {
   display: flex;
   flex-wrap: wrap;
@@ -619,9 +624,15 @@ class Sub2APIStatusPlugin(Star):
 
     def _max_display(self) -> int:
         try:
-            return max(1, min(int(self.config.get("max_display_accounts", 12)), 50))
+            return max(1, min(int(self.config.get("max_display_accounts", 8)), 50))
         except Exception:
-            return 12
+            return 8
+
+    @staticmethod
+    def _render_options() -> dict[str, Any]:
+        # AstrBot 会把这里的选项合并进默认的 {"type": "jpeg", "quality": 40}，
+        # 若改用 png，残留的 quality 会让 Playwright 截图直接报错，所以保持 jpeg 并提高画质。
+        return {"type": "jpeg", "quality": 92, "full_page": True, "scale": "device", "animations": "disabled"}
 
     def _auth_headers(self) -> dict[str, str]:
         admin_key = str(self.config.get("admin_api_key", "") or "").strip()
@@ -833,7 +844,7 @@ class Sub2APIStatusPlugin(Star):
         return items[0]
 
     _SENSITIVE_WORDS = ("token", "secret", "password", "credential", "cookie", "authorization", "api_key", "apikey", "access_key", "refresh_token")
-    _INTERESTING_WORDS = ("plan", "tier", "usage", "used", "limit", "remain", "quota", "balance", "credit", "reset", "request", "token_count", "input_tokens", "output_tokens", "total_tokens", "cost", "window", "expires", "fetched", "allowed", "reached")
+    _INTERESTING_WORDS = ("plan", "tier", "usage", "used", "limit", "remain", "quota", "balance", "credit", "reset", "request", "token_count", "input_tokens", "output_tokens", "total_tokens", "cost", "window", "expires", "fetched", "allowed", "reached", "utilization", "percent", "account", "user", "rpm", "tpm", "rate", "duration", "response_time", "uptime")
 
     def _flatten_interesting(self, value: Any, prefix: str = "", depth: int = 0, out: list[tuple[str, Any]] | None = None) -> list[tuple[str, Any]]:
         if out is None:
@@ -857,28 +868,66 @@ class Sub2APIStatusPlugin(Star):
                 self._flatten_interesting(child, f"{prefix}[{idx}]", depth + 1, out)
         return out
 
+    _KEY_LABELS = {
+        "used_percent": "已使用%",
+        "utilization": "已使用%",
+        "reset_after_seconds": "距重置(秒)",
+        "reset_at": "重置时间",
+        "resets_at": "重置时间",
+        "balance": "余额",
+        "plan_type": "套餐",
+        "subscription_tier": "订阅等级",
+        "requests": "请求数",
+        "request_count": "请求数",
+        "tokens": "Tokens",
+        "input_tokens": "输入Tokens",
+        "output_tokens": "输出Tokens",
+        "total_tokens": "总Tokens",
+        "cost": "费用",
+        "actual_cost": "实际费用",
+        "standard_cost": "标准费用",
+        "user_cost": "用户费用",
+        "allowed": "允许",
+        "limit_reached": "触发限额",
+        "fetched_at": "获取时间",
+        "expires_at": "到期时间",
+        "five_hour": "5小时窗口",
+        "seven_day": "7天窗口",
+        "seven_day_opus": "7天Opus",
+        "seven_day_sonnet": "7天Sonnet",
+        "total_accounts": "账号总数",
+        "normal_accounts": "正常账号",
+        "active_accounts": "活跃账号",
+        "error_accounts": "异常账号",
+        "ratelimit_accounts": "限流账号",
+        "overload_accounts": "过载账号",
+        "total_users": "用户总数",
+        "active_users": "活跃用户",
+        "today_new_users": "今日新用户",
+        "total_api_keys": "API Key 总数",
+        "active_api_keys": "活跃 API Key",
+        "total_requests": "累计请求",
+        "today_requests": "今日请求",
+        "today_tokens": "今日Tokens",
+        "today_input_tokens": "今日输入Tokens",
+        "today_output_tokens": "今日输出Tokens",
+        "total_cost": "累计费用",
+        "total_actual_cost": "累计实际费用",
+        "today_cost": "今日费用",
+        "today_actual_cost": "今日实际费用",
+        "active_requests": "进行中请求",
+        "requests_per_minute": "每分钟请求",
+        "average_response_time": "平均响应(ms)",
+        "average_duration_ms": "平均耗时(ms)",
+        "error_rate": "错误率",
+        "rpm": "RPM",
+        "tpm": "TPM",
+        "uptime": "运行时长(秒)",
+    }
+
     def _friendly_key(self, key: str) -> str:
-        replacements = {
-            "used_percent": "已使用%",
-            "reset_after_seconds": "距重置(秒)",
-            "reset_at": "重置时间",
-            "balance": "余额",
-            "plan_type": "套餐",
-            "subscription_tier": "订阅等级",
-            "requests": "请求数",
-            "request_count": "请求数",
-            "input_tokens": "输入Tokens",
-            "output_tokens": "输出Tokens",
-            "total_tokens": "总Tokens",
-            "cost": "费用",
-            "actual_cost": "实际费用",
-            "allowed": "允许",
-            "limit_reached": "触发限额",
-            "fetched_at": "获取时间",
-            "expires_at": "到期时间",
-        }
-        leaf = key.split(".")[-1]
-        return replacements.get(leaf, key)
+        parts = [p for p in key.replace("[", ".[").split(".") if p]
+        return " · ".join(self._KEY_LABELS.get(p, p) for p in parts)
 
     def _pairs_for_display(self, payload: Any, limit: int = 12) -> list[dict[str, str]]:
         payload = self._unwrap(payload)
@@ -898,6 +947,8 @@ class Sub2APIStatusPlugin(Star):
                 value_text = "是" if value else "否"
             elif isinstance(value, float):
                 value_text = self._fmt_number(value, 4)
+            elif isinstance(value, str) and len(value) >= 19 and value[4] == "-" and value[10] == "T":
+                value_text = self._fmt_datetime(value)
             else:
                 value_text = str(value)
             if len(value_text) > 100:
@@ -961,9 +1012,8 @@ class Sub2APIStatusPlugin(Star):
                 paused += 1
 
         model_tags: list[str] = []
-        for acc in display_accounts[:4]:
-            mid = acc.get("id")
-            models = await self._models_for_account(mid)
+        model_lists = await asyncio.gather(*(self._models_for_account(acc.get("id")) for acc in display_accounts[:4]))
+        for models in model_lists:
             for m in models[:6]:
                 if m not in model_tags:
                     model_tags.append(m)
@@ -1011,7 +1061,7 @@ class Sub2APIStatusPlugin(Star):
         if isinstance(stats_payload, Exception):
             stats = [{"key": "全局统计", "value": "获取失败"}]
         else:
-            stats = self._pairs_for_display(stats_payload, 6) or [{"key": "全局统计", "value": "暂无数据"}]
+            stats = self._pairs_for_display(stats_payload, 8) or [{"key": "全局统计", "value": "暂无数据"}]
 
         data = {
             "panel_title": "Sub2API 账号总览",
@@ -1031,7 +1081,7 @@ class Sub2APIStatusPlugin(Star):
                 "Sub2API 在本机/局域网时建议绕过系统代理",
             ],
         }
-        options = {"type": "png", "full_page": True, "scale": "device", "animations": "disabled"}
+        options = self._render_options()
         return await self.html_render(PANEL_TEMPLATE, data, options=options)
 
     async def _render_detail_image(self, selector: str) -> str:
@@ -1087,7 +1137,7 @@ class Sub2APIStatusPlugin(Star):
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "base_url": self._base_url(),
         }
-        options = {"type": "png", "full_page": True, "scale": "device", "animations": "disabled"}
+        options = self._render_options()
         return await self.html_render(DETAIL_TEMPLATE, data, options=options)
 
     # ---- commands ----

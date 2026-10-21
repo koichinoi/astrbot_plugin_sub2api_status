@@ -4,7 +4,7 @@ short_desc: 在 AstrBot 中用文本或精美图片查看 Sub2API 账号、用�
 desc: |
   支持文本查询与精美图形面板：
   账号列表、单账号详情、额度/用量、模型列表、全局状态，以及 HTML 渲染的总览面板和账号卡片。
-version: 1.1.0
+version: 1.1.1
 author: koi
 repo: https://github.com/koichinoi/astrbot_plugin_sub2api_status
 astrbot_version: ">=4.17.0"
