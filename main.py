@@ -1181,8 +1181,10 @@ class Sub2APIStatusPlugin(Star):
         "today_actual_cost": "今日实际费用",
         "active_requests": "进行中请求",
         "requests_per_minute": "每分钟请求",
-        "average_response_time": "平均响应(ms)",
-        "average_duration_ms": "平均耗时(ms)",
+        "average_response_time": "平均响应",
+        "average_duration_ms": "平均耗时",
+        "hourly_active_users": "近1小时活跃用户",
+        "today_total_tokens": "今日Tokens",
         "error_rate": "错误率",
         "rpm": "RPM",
         "tpm": "TPM",
@@ -1202,11 +1204,35 @@ class Sub2APIStatusPlugin(Star):
                 return True
         return False
 
-    def _pairs_for_display(self, payload: Any, limit: int = 12, skip_paths: list[str] | None = None) -> list[dict[str, str]]:
+    # 值的单位是毫秒的字段，显示时换算成 ms / 秒
+    _MS_KEYS = ("average_response_time", "average_duration_ms")
+    # 面板“全局统计”优先展示的字段；账号计数已在顶部卡片展示，不再占位
+    _STATS_PREFER = (
+        "today_requests", "today_tokens", "today_total_tokens", "today_cost",
+        "total_requests", "total_cost", "active_users", "rpm", "average_duration_ms",
+        "today_actual_cost", "tpm",
+    )
+
+    def _fmt_ms(self, value: Any) -> str:
+        try:
+            ms = float(value)
+        except Exception:
+            return str(value)
+        if ms >= 1000:
+            return f"{self._fmt_number(ms / 1000, 1)} 秒"
+        return f"{self._fmt_number(ms, 0)} ms"
+
+    def _pairs_for_display(self, payload: Any, limit: int = 12, skip_paths: list[str] | None = None,
+                           prefer: tuple[str, ...] = ()) -> list[dict[str, str]]:
         payload = self._unwrap(payload)
         if payload is None:
             return []
         pairs = self._flatten_interesting(payload)
+        if prefer and isinstance(payload, dict):
+            head = [(k, payload[k]) for k in prefer
+                    if isinstance(payload.get(k), (int, float, str)) and not isinstance(payload.get(k), bool)]
+            seen = {k for k, _ in head}
+            pairs = head + [(k, v) for k, v in pairs if k not in seen]
         if not pairs and isinstance(payload, dict):
             for key, value in payload.items():
                 kl = str(key).lower()
@@ -1220,6 +1246,8 @@ class Sub2APIStatusPlugin(Star):
         for key, value in pairs[:limit]:
             if isinstance(value, bool):
                 value_text = "是" if value else "否"
+            elif key.split(".")[-1] in self._MS_KEYS:
+                value_text = self._fmt_ms(value)
             elif isinstance(value, float):
                 value_text = self._fmt_number(value, 4)
             elif isinstance(value, str) and len(value) >= 19 and value[4] == "-" and value[10] == "T":
@@ -1398,7 +1426,7 @@ class Sub2APIStatusPlugin(Star):
         if isinstance(stats_payload, Exception):
             stats = [{"key": "全局统计", "value": "获取失败"}]
         else:
-            stats = self._pairs_for_display(stats_payload, 8) or [{"key": "全局统计", "value": "暂无数据"}]
+            stats = self._pairs_for_display(stats_payload, 8, prefer=self._STATS_PREFER) or [{"key": "全局统计", "value": "暂无数据"}]
 
         attention = self._attention_items(accounts, top_usage)
         attention_hint = f"{len(attention)} 个账号" if attention else "异常 / 限流 / 到期 / 额度"
